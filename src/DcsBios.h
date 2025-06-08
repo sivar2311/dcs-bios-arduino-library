@@ -128,6 +128,78 @@ do not come with their own build system, we are just putting everything into the
 	}
 #endif
 
+#ifdef DCSBIOS_ESP32_UDP
+#include <WiFi.h>
+#include <WiFiUDP.h>
+namespace DcsBios {
+
+	ProtocolParser parser;
+	WiFiUDP udp;
+
+	const IPAddress invalid(0, 0, 0, 0);
+	const IPAddress dcsBiosUDPBroadcastAddress(239, 255, 50, 10);
+	const uint16_t  dcsBiosUDPBroardcastPort = 5010;
+
+	IPAddress       dcsBiosUDPRemoteAddress = invalid;
+	const uint16_t  dcsBiosUDPRemotePort = 7778;
+
+	unsigned long lastDcsBiosMessageReceived = 1000;
+
+	#ifndef DCSBIOS_LOG_OUTPUT
+	#define DCSBIOS_LOG(args...)
+	#else
+	#define DCSBIOS_LOG(args...) DCSBIOS_LOG_OUTPUT.printf(args)
+	#endif
+
+	void setup() {
+		udp.beginMulticast(dcsBiosUDPBroadcastAddress, dcsBiosUDPBroardcastPort);
+	}
+
+	void loop() {
+		if (WiFi.status() != WL_CONNECTED) return;
+
+		unsigned long now = millis();
+		if (lastDcsBiosMessageReceived && now - lastDcsBiosMessageReceived >= 1000) {
+			dcsBiosUDPRemoteAddress = invalid;
+			lastDcsBiosMessageReceived = 0;
+			DCSBIOS_LOG("Waiting for DCS-BIOS UDP packets...\r\n");
+		}
+
+		while (udp.parsePacket()) {
+			if (udp.remoteIP() != dcsBiosUDPRemoteAddress) {
+				dcsBiosUDPRemoteAddress = udp.remoteIP();
+				DCSBIOS_LOG("Receiving DCS-BIOS packets from: %s\n", dcsBiosUDPRemoteAddress.toString().c_str());
+			}
+
+			lastDcsBiosMessageReceived = now;
+
+			while (udp.available()) {
+				char c = udp.read();
+				DCSBIOS_LOG("%c", c);
+				parser.processChar(c);
+			}
+			DCSBIOS_LOG("\r\n");
+		}
+		PollingInput::pollInputs();
+		ExportStreamListener::loopAll();
+	}
+
+	bool tryToSendDcsBiosMessage(const char* msg, const char* arg) {
+		if (dcsBiosUDPRemoteAddress == invalid) {
+			return false;
+		}
+
+		udp.beginPacket(dcsBiosUDPRemoteAddress, dcsBiosUDPRemotePort);
+		udp.printf("%s %s\n", msg, arg);
+		udp.endPacket();
+
+		DcsBios::PollingInput::setMessageSentOrQueued();
+		return true;
+	}
+}
+#endif
+
+
 #include "internal/Buttons.h"
 #include "internal/Switches.h"
 #include "internal/SyncingSwitches.h"
