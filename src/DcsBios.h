@@ -130,7 +130,7 @@ do not come with their own build system, we are just putting everything into the
 
 #ifdef DCSBIOS_ESP32_UDP
 #include <WiFi.h>
-#include <WiFiUDP.h>
+#include <WiFiUdp.h>
 namespace DcsBios {
 
 	ProtocolParser parser;
